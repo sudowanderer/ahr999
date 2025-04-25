@@ -28,3 +28,13 @@ func GeometricMean(data []float64) (float64, error) {
 	meanLog := sumLog / float64(len(data))
 	return math.Exp(meanLog), nil
 }
+
+func ComputeEstimatedValue(latestTime int64) float64 {
+	const genesis = 1230940800
+	days := float64(latestTime-genesis) / 86400
+	return math.Pow(10, 5.84*math.Log10(days)-17.01)
+}
+
+func ComputeAHR999(latestPrice, geomean, estimated float64) float64 {
+	return (latestPrice / geomean) * (latestPrice / estimated)
+}

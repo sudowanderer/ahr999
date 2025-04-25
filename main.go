@@ -1,97 +1,81 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
-	"math"
-	"net/http"
-	"strconv"
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/sudowanderer/notikit/notifier"
+	"os"
 	"time"
 )
 
-// 历史 K线数据结构
-type Candle []float64 // [time, low, high, open, close, volume]
+func handleRequest(ctx context.Context, event json.RawMessage) error {
+	// ✅ 检查必备环境变量
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	chatID := os.Getenv("TELEGRAM_CHAT_ID")
 
-// 最新市场价格结构
-type MarketStats struct {
-	Open     string `json:"open"`
-	High     string `json:"high"`
-	Low      string `json:"low"`
-	Last     string `json:"last"`
-	Volume   string `json:"volume"`
-	Volume30 string `json:"volume_30day"`
-}
+	if botToken == "" || chatID == "" {
+		return fmt.Errorf("missing required environment variables: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID")
+	}
 
-func GetTimestampDaysAgo(days int) int64 {
-	now := time.Now().UTC()
-	daysAgo := now.AddDate(0, 0, -days)
-	beginningOfDay := time.Date(daysAgo.Year(), daysAgo.Month(), daysAgo.Day(), 0, 0, 0, 0, time.UTC)
-	return beginningOfDay.Unix()
-}
-func main() {
-	start := GetTimestampDaysAgo(200)
+	// Optional timezone for Telegram messages
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	tg := notifier.NewTelegramNotifierWithLocation(botToken, chatID, loc)
+
+	// === 核心逻辑 ===
+	const days = 200
+	start := GetTimestampDaysAgo(days)
 	end := time.Now().UTC().Unix()
-	// === Step 1: 获取历史数据（最近200天） ===
-	historyURL := fmt.Sprintf("https://api.exchange.coinbase.com/products/btc-usdt/candles?granularity=86400&start=%d&end=%d", start, end)
-	resp, err := http.Get(historyURL)
+
+	candles, err := FetchHistoricalCandles(start, end)
 	if err != nil {
-		log.Fatal("Error fetching historical data:", err)
+		return fmt.Errorf("failed to fetch candles: %w", err)
 	}
-	defer resp.Body.Close()
-
-	var candles []Candle
-	if err := json.NewDecoder(resp.Body).Decode(&candles); err != nil {
-		log.Fatal("Error decoding candles:", err)
+	if len(candles) < days {
+		return fmt.Errorf("not enough candle data")
 	}
 
-	if len(candles) < 200 {
-		log.Fatal("Not enough data to compute 200-day geometric mean")
-	}
-
-	closePrices := make([]float64, 200)
-	for i := 0; i < 200; i++ {
-		closePrices[i] = candles[i][4] // ✅ 最近200天的close
-	}
-	geomean, _ := GeometricMean(closePrices)
-
-	// === Step 2: 获取最新价格（使用low字段） ===
-	statsURL := "https://api.exchange.coinbase.com/products/btc-usdt/stats"
-	statsResp, err := http.Get(statsURL)
+	closePrices := ExtractClosePrices(candles, days)
+	geomean, err := GeometricMean(closePrices)
 	if err != nil {
-		log.Fatal("Error fetching market stats:", err)
-	}
-	defer statsResp.Body.Close()
-
-	var stats MarketStats
-	if err := json.NewDecoder(statsResp.Body).Decode(&stats); err != nil {
-		log.Fatal("Error decoding stats:", err)
+		return fmt.Errorf("failed to compute geomean: %w", err)
 	}
 
-	latestPrice, err := strconv.ParseFloat(stats.Last, 64)
+	stats, err := FetchMarketStats()
 	if err != nil {
-		log.Fatal("Error parsing latest low price:", err)
+		return fmt.Errorf("failed to fetch market stats: %w", err)
+	}
+	latestPrice, err := stats.ParseLastPrice()
+	if err != nil {
+		return fmt.Errorf("invalid latest price: %w", err)
 	}
 
-	// === Step 3: 计算指数估值 ===
-	genesis := int64(1230940800)
 	latestTime := int64(candles[0][0])
-	days := float64(latestTime-genesis) / 86400
+	estimatedValue := ComputeEstimatedValue(latestTime)
+	ahr999 := ComputeAHR999(latestPrice, geomean, estimatedValue)
 
-	if days <= 0 {
-		log.Fatal("Invalid days calculation: days must be greater than 0")
+	// ✅ 构造并发送格式化消息
+	msg := fmt.Sprintf(`📈 AHR999 Indicator Report
+AHR999: %.4f
+Latest Price: %.2f
+200-day Cost (Geomean): %.2f
+建议区间:
+✅ 抄底区: < 0.45
+💰 定投区: < 1.20`, ahr999, latestPrice, estimatedValue)
+
+	if err := tg.Notify(msg); err != nil {
+		return fmt.Errorf("failed to send notification: %w", err)
 	}
 
-	estimatedValue := math.Pow(10, 5.84*math.Log10(days)-17.01)
+	return nil
+}
 
-	// === Step 4: 计算 AHR999 ===
-	// 使用原Python逻辑: ahr999 = (latestPrice / geomean) * (latestPrice / estimatedValue)
-	ahr999 := (latestPrice / geomean) * (latestPrice / estimatedValue)
-
-	// 输出结果
-	fmt.Printf("AHR999: %.4f\n", ahr999)
-	fmt.Printf("Latest Price: %.2f\n", latestPrice)
-	fmt.Printf("200-day cost: %.2f\n", geomean)
-	println("Buy at the bottom: 0.45")
-	println("Fixed Investment zone: 1.20")
+func main() {
+	// for local test
+	//err := handleRequest(context.Background(), nil)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	lambda.Start(handleRequest)
 }
