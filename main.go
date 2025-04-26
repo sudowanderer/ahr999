@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/sudowanderer/notikit/notifier"
+	"log"
 	"os"
 	"time"
 )
@@ -62,7 +62,7 @@ Latest Price: %.2f
 200-day Cost (Geomean): %.2f
 建议区间:
 ✅ 抄底区: < 0.45
-💰 定投区: < 1.20`, ahr999, latestPrice, estimatedValue)
+💰 定投区: < 1.20`, ahr999, latestPrice, geomean)
 
 	if err := tg.Notify(msg); err != nil {
 		return fmt.Errorf("failed to send notification: %w", err)
@@ -72,10 +72,10 @@ Latest Price: %.2f
 }
 
 func main() {
-	// for local test
-	//err := handleRequest(context.Background(), nil)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-	lambda.Start(handleRequest)
+	//for local test
+	err := handleRequest(context.Background(), nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	//lambda.Start(handleRequest)
 }
