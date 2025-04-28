@@ -1,0 +1,4 @@
+github.com/aws/aws-lambda-go v1.48.0 h1:1aZUYsrJu0yo5fC4z+Rba1KhNImXcJcvHu763BxoyIo=
+github.com/aws/aws-lambda-go v1.48.0/go.mod h1:dpMpZgvWx5vuQJfBt0zqBha60q7Dd7RfgJv23DymV8A=
+github.com/sudowanderer/notikit v0.1.0 h1:kqx0saGr4P6bi64pPSTNiKcHfbh4Q5oymQbuKDc7FZU=
+github.com/sudowanderer/notikit v0.1.0/go.mod h1:KTgFveQhfKIpVYQ9+KiHdoXWowYcjANTZLgyoIQJOnI=

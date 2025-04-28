@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/sudowanderer/notikit/notifier"
-	"log"
 	"os"
 	"time"
 )
@@ -73,9 +73,9 @@ Latest Price: %.2f
 
 func main() {
 	//for local test
-	err := handleRequest(context.Background(), nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	//lambda.Start(handleRequest)
+	//err := handleRequest(context.Background(), nil)
+	//if err != nil {
+	//	log.Fatal(err)
+	//}
+	lambda.Start(handleRequest)
 }
